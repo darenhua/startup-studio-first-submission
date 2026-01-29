@@ -1,20 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
+import Link from 'next/link';
 import Phaser from 'phaser';
-
-/**
- * SNAKE + MINESWEEPER HYBRID
- *
- * Concept: The snake navigates through a minesweeper grid. The snake can only see
- * cells it has visited or is adjacent to. Each revealed cell shows the number of
- * adjacent mines. The goal is to eat all the food without hitting a mine.
- *
- * - Snake moves through a grid with hidden mines
- * - Cells are revealed as the snake passes by them
- * - Numbers indicate adjacent mines
- * - Hit a mine = game over
- * - Eat all food to win
- */
+import { motion } from 'framer-motion';
+import { ArrowLeft, RotateCcw, Trophy, Bomb, Apple } from 'lucide-react';
 
 interface Cell {
     isMine: boolean;
@@ -38,15 +27,21 @@ class SnakeMinesweeperScene extends Phaser.Scene {
     private gameOver = false;
     private won = false;
     private graphics!: Phaser.GameObjects.Graphics;
-    private statusText!: Phaser.GameObjects.Text;
     private revealedCells: Set<string> = new Set();
+    private onFoodUpdate?: (eaten: number, total: number) => void;
+    private onGameEnd?: (won: boolean, score: number) => void;
 
     constructor() {
         super('SnakeMinesweeper');
     }
 
+    init(data: { onFoodUpdate?: (eaten: number, total: number) => void; onGameEnd?: (won: boolean, score: number) => void }) {
+        this.onFoodUpdate = data.onFoodUpdate;
+        this.onGameEnd = data.onGameEnd;
+    }
+
     create() {
-        this.cameras.main.setBackgroundColor(0x1a1a2e);
+        this.cameras.main.setBackgroundColor(0x000000);
 
         this.graphics = this.add.graphics();
         this.gameOver = false;
@@ -57,10 +52,8 @@ class SnakeMinesweeperScene extends Phaser.Scene {
         this.moveTimer = 0;
         this.revealedCells = new Set();
 
-        // Initialize grid
         this.initGrid();
 
-        // Initialize snake in safe zone (center)
         const centerX = Math.floor(this.gridSize / 2);
         const centerY = Math.floor(this.gridSize / 2);
         this.snake = [
@@ -69,27 +62,10 @@ class SnakeMinesweeperScene extends Phaser.Scene {
             { x: centerX - 2, y: centerY }
         ];
 
-        // Place mines (avoiding snake start area)
         this.placeMines(centerX, centerY);
-
-        // Place food
         this.placeFood();
-
-        // Reveal cells around starting position
         this.revealAroundSnake();
 
-        // UI
-        this.statusText = this.add.text(16, 16, `Food: 0/${this.foodCount} | Mines: ${this.mineCount}`, {
-            fontSize: '24px',
-            color: '#ffffff'
-        });
-
-        this.add.text(16, 50, 'Arrow keys to move. Reveal the grid, eat food, avoid mines!', {
-            fontSize: '14px',
-            color: '#888888'
-        });
-
-        // Input
         this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
             if (this.gameOver) {
                 if (event.code === 'Space') {
@@ -100,15 +76,19 @@ class SnakeMinesweeperScene extends Phaser.Scene {
 
             switch (event.code) {
                 case 'ArrowUp':
+                case 'KeyW':
                     if (this.direction.y !== 1) this.nextDirection = { x: 0, y: -1 };
                     break;
                 case 'ArrowDown':
+                case 'KeyS':
                     if (this.direction.y !== -1) this.nextDirection = { x: 0, y: 1 };
                     break;
                 case 'ArrowLeft':
+                case 'KeyA':
                     if (this.direction.x !== 1) this.nextDirection = { x: -1, y: 0 };
                     break;
                 case 'ArrowRight':
+                case 'KeyD':
                     if (this.direction.x !== -1) this.nextDirection = { x: 1, y: 0 };
                     break;
             }
@@ -137,8 +117,6 @@ class SnakeMinesweeperScene extends Phaser.Scene {
         while (placed < this.mineCount) {
             const x = Math.floor(Math.random() * this.gridSize);
             const y = Math.floor(Math.random() * this.gridSize);
-
-            // Don't place near starting position
             const isSafe = Math.abs(x - safeX) <= 2 && Math.abs(y - safeY) <= 2;
 
             if (!this.grid[y][x].isMine && !isSafe) {
@@ -147,7 +125,6 @@ class SnakeMinesweeperScene extends Phaser.Scene {
             }
         }
 
-        // Calculate adjacent mines
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
                 if (!this.grid[y][x].isMine) {
@@ -177,9 +154,7 @@ class SnakeMinesweeperScene extends Phaser.Scene {
             const x = Math.floor(Math.random() * this.gridSize);
             const y = Math.floor(Math.random() * this.gridSize);
 
-            // Don't place on mines or existing food
             if (!this.grid[y][x].isMine && !this.grid[y][x].hasFood) {
-                // Don't place on snake
                 let onSnake = false;
                 for (const seg of this.snake) {
                     if (seg.x === x && seg.y === y) {
@@ -229,46 +204,37 @@ class SnakeMinesweeperScene extends Phaser.Scene {
             y: head.y + this.direction.y
         };
 
-        // Check wall collision
         if (newHead.x < 0 || newHead.x >= this.gridSize ||
             newHead.y < 0 || newHead.y >= this.gridSize) {
-            this.endGame(false, 'Hit the wall!');
+            this.endGame(false);
             return;
         }
 
-        // Check self collision
         for (const segment of this.snake) {
             if (segment.x === newHead.x && segment.y === newHead.y) {
-                this.endGame(false, 'Hit yourself!');
+                this.endGame(false);
                 return;
             }
         }
 
-        // Check mine collision
         if (this.grid[newHead.y][newHead.x].isMine) {
-            this.endGame(false, 'Hit a mine!');
+            this.endGame(false);
             return;
         }
 
-        // Add new head
         this.snake.unshift(newHead);
-
-        // Reveal around new position
         this.revealAroundSnake();
 
-        // Check food
         if (this.grid[newHead.y][newHead.x].hasFood) {
             this.grid[newHead.y][newHead.x].hasFood = false;
             this.foodEaten++;
-            this.statusText.setText(`Food: ${this.foodEaten}/${this.foodCount} | Mines: ${this.mineCount}`);
+            this.onFoodUpdate?.(this.foodEaten, this.foodCount);
 
             if (this.foodEaten >= this.foodCount) {
-                this.endGame(true, 'All food collected!');
+                this.endGame(true);
                 return;
             }
-            // Don't remove tail - snake grows
         } else {
-            // Remove tail
             this.snake.pop();
         }
     }
@@ -280,17 +246,16 @@ class SnakeMinesweeperScene extends Phaser.Scene {
         const offsetY = (768 - this.gridSize * this.tileSize) / 2;
 
         const numberColors: { [key: number]: string } = {
-            1: '#3498db',
-            2: '#27ae60',
-            3: '#e74c3c',
-            4: '#9b59b6',
-            5: '#e67e22',
-            6: '#1abc9c',
-            7: '#34495e',
-            8: '#95a5a6'
+            1: '#06b6d4',
+            2: '#10b981',
+            3: '#f59e0b',
+            4: '#8b5cf6',
+            5: '#ef4444',
+            6: '#14b8a6',
+            7: '#ffffff',
+            8: '#6b7280'
         };
 
-        // Draw cells
         for (let y = 0; y < this.gridSize; y++) {
             for (let x = 0; x < this.gridSize; x++) {
                 const cell = this.grid[y][x];
@@ -299,36 +264,34 @@ class SnakeMinesweeperScene extends Phaser.Scene {
 
                 if (cell.isRevealed) {
                     if (cell.isMine && this.gameOver) {
-                        // Revealed mine
-                        this.graphics.fillStyle(0xe74c3c, 1);
-                        this.graphics.fillRect(px + 1, py + 1, this.tileSize - 2, this.tileSize - 2);
-                        this.graphics.fillStyle(0x2c3e50, 1);
-                        this.graphics.fillCircle(px + this.tileSize / 2, py + this.tileSize / 2, 10);
+                        this.graphics.fillStyle(0xef4444, 1);
+                        this.graphics.fillRoundedRect(px + 2, py + 2, this.tileSize - 4, this.tileSize - 4, 4);
+                        this.graphics.fillStyle(0x000000, 1);
+                        this.graphics.fillCircle(px + this.tileSize / 2, py + this.tileSize / 2, 8);
                     } else {
-                        // Safe revealed cell
-                        this.graphics.fillStyle(0x2c3e50, 1);
-                        this.graphics.fillRect(px + 1, py + 1, this.tileSize - 2, this.tileSize - 2);
+                        this.graphics.fillStyle(0x1a1a1a, 1);
+                        this.graphics.fillRoundedRect(px + 2, py + 2, this.tileSize - 4, this.tileSize - 4, 4);
 
                         if (cell.adjacentMines > 0) {
                             const color = numberColors[cell.adjacentMines] || '#ffffff';
                             this.add.text(px + this.tileSize / 2, py + this.tileSize / 2,
                                 cell.adjacentMines.toString(), {
-                                    fontSize: '20px',
-                                    color: color
+                                    fontSize: '18px',
+                                    color: color,
+                                    fontStyle: 'bold'
                                 }).setOrigin(0.5);
                         }
 
                         if (cell.hasFood) {
-                            this.graphics.fillStyle(0xf1c40f, 1);
+                            this.graphics.fillStyle(0x10b981, 1);
                             this.graphics.fillCircle(px + this.tileSize / 2, py + this.tileSize / 2, 8);
                         }
                     }
                 } else {
-                    // Unrevealed (fog of war)
-                    this.graphics.fillStyle(0x1a1a2e, 1);
-                    this.graphics.fillRect(px + 1, py + 1, this.tileSize - 2, this.tileSize - 2);
-                    this.graphics.fillStyle(0x16213e, 1);
-                    this.graphics.fillRect(px + 2, py + 2, this.tileSize - 4, this.tileSize - 4);
+                    this.graphics.fillStyle(0x0a0a0a, 1);
+                    this.graphics.fillRoundedRect(px + 2, py + 2, this.tileSize - 4, this.tileSize - 4, 4);
+                    this.graphics.lineStyle(1, 0x1a1a1a, 1);
+                    this.graphics.strokeRoundedRect(px + 2, py + 2, this.tileSize - 4, this.tileSize - 4, 4);
                 }
             }
         }
@@ -337,21 +300,22 @@ class SnakeMinesweeperScene extends Phaser.Scene {
         this.snake.forEach((segment, index) => {
             const px = offsetX + segment.x * this.tileSize;
             const py = offsetY + segment.y * this.tileSize;
-            const color = index === 0 ? 0x00ff88 : 0x00cc66;
-            this.graphics.fillStyle(color, 1);
-            this.graphics.fillRect(px + 3, py + 3, this.tileSize - 6, this.tileSize - 6);
+            const isHead = index === 0;
+            const alpha = 1 - (index * 0.02);
+
+            this.graphics.fillStyle(isHead ? 0xffffff : 0xe5e5e5, Math.max(0.5, alpha));
+            this.graphics.fillRoundedRect(px + 4, py + 4, this.tileSize - 8, this.tileSize - 8, isHead ? 8 : 4);
         });
 
         // Grid border
-        this.graphics.lineStyle(2, 0x0f3460, 1);
-        this.graphics.strokeRect(offsetX, offsetY, this.gridSize * this.tileSize, this.gridSize * this.tileSize);
+        this.graphics.lineStyle(2, 0x333333, 1);
+        this.graphics.strokeRoundedRect(offsetX - 2, offsetY - 2, this.gridSize * this.tileSize + 4, this.gridSize * this.tileSize + 4, 8);
     }
 
-    private endGame(won: boolean, message: string) {
+    private endGame(won: boolean) {
         this.gameOver = true;
         this.won = won;
 
-        // Reveal all mines
         if (!won) {
             for (let y = 0; y < this.gridSize; y++) {
                 for (let x = 0; x < this.gridSize; x++) {
@@ -363,29 +327,22 @@ class SnakeMinesweeperScene extends Phaser.Scene {
         }
 
         this.draw();
-
-        const title = won ? 'YOU WIN!' : 'GAME OVER';
-        const color = won ? '#00ff88' : '#e94560';
-
-        this.add.text(512, 360, title, {
-            fontSize: '64px',
-            color: color
-        }).setOrigin(0.5);
-
-        this.add.text(512, 420, message, {
-            fontSize: '24px',
-            color: '#ffffff'
-        }).setOrigin(0.5);
-
-        this.add.text(512, 470, 'Press SPACE to restart', {
-            fontSize: '20px',
-            color: '#888888'
-        }).setOrigin(0.5);
+        this.onGameEnd?.(won, this.foodEaten);
     }
 }
 
 export default function SnakeMinesweeperPage() {
     const gameRef = useRef<Phaser.Game | null>(null);
+    const [foodEaten, setFoodEaten] = useState(0);
+    const [foodTotal] = useState(10);
+    const [gameOver, setGameOver] = useState(false);
+    const [won, setWon] = useState(false);
+    const [highScore, setHighScore] = useState(0);
+
+    useEffect(() => {
+        const saved = localStorage.getItem('snake-minesweeper-high-score');
+        if (saved) setHighScore(parseInt(saved));
+    }, []);
 
     useEffect(() => {
         if (typeof window !== 'undefined' && !gameRef.current) {
@@ -394,11 +351,26 @@ export default function SnakeMinesweeperPage() {
                 width: 1024,
                 height: 768,
                 parent: 'game-container',
-                backgroundColor: '#1a1a2e',
+                backgroundColor: '#000000',
                 scene: [SnakeMinesweeperScene]
             };
 
             gameRef.current = new Phaser.Game(config);
+
+            gameRef.current.events.once('ready', () => {
+                const scene = gameRef.current?.scene.getScene('SnakeMinesweeper') as SnakeMinesweeperScene;
+                scene?.scene.restart({
+                    onFoodUpdate: (eaten: number, total: number) => setFoodEaten(eaten),
+                    onGameEnd: (w: boolean, score: number) => {
+                        setGameOver(true);
+                        setWon(w);
+                        if (score > highScore) {
+                            setHighScore(score);
+                            localStorage.setItem('snake-minesweeper-high-score', score.toString());
+                        }
+                    }
+                });
+            });
         }
 
         return () => {
@@ -407,22 +379,121 @@ export default function SnakeMinesweeperPage() {
                 gameRef.current = null;
             }
         };
-    }, []);
+    }, [highScore]);
+
+    const handleRestart = () => {
+        setFoodEaten(0);
+        setGameOver(false);
+        setWon(false);
+        const scene = gameRef.current?.scene.getScene('SnakeMinesweeper') as SnakeMinesweeperScene;
+        scene?.scene.restart({
+            onFoodUpdate: (eaten: number, total: number) => setFoodEaten(eaten),
+            onGameEnd: (w: boolean, score: number) => {
+                setGameOver(true);
+                setWon(w);
+                if (score > highScore) {
+                    setHighScore(score);
+                    localStorage.setItem('snake-minesweeper-high-score', score.toString());
+                }
+            }
+        });
+    };
 
     return (
         <>
             <Head>
-                <title>Snake + Minesweeper</title>
+                <title>Snake + Minesweeper | Game Arcade</title>
+                <meta name="description" content="Navigate a minesweeper grid as a snake" />
             </Head>
-            <main style={{
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                minHeight: '100vh',
-                backgroundColor: '#0a0a0a'
-            }}>
-                <div id="game-container" />
-            </main>
+
+            <div className="dark min-h-screen bg-black text-white">
+                <motion.nav
+                    className="border-b border-white/10 bg-black/50 backdrop-blur-xl sticky top-0 z-50"
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                >
+                    <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <Link href="/final" className="flex items-center gap-2 text-white/60 hover:text-white transition-colors">
+                                <ArrowLeft className="w-4 h-4" />
+                                <span className="text-sm">Back</span>
+                            </Link>
+                            <div className="h-4 w-px bg-white/20" />
+                            <h1 className="text-lg font-semibold">Snake + Minesweeper</h1>
+                        </div>
+
+                        <div className="flex items-center gap-6">
+                            <div className="flex items-center gap-2 text-white/60">
+                                <Apple className="w-4 h-4 text-emerald-500" />
+                                <span className="text-sm font-medium">{foodEaten} / {foodTotal}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-white/60">
+                                <Bomb className="w-4 h-4 text-red-500" />
+                                <span className="text-sm font-medium">25</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-white/60">
+                                <Trophy className="w-4 h-4 text-yellow-500" />
+                                <span className="text-sm font-medium">{highScore}</span>
+                            </div>
+                        </div>
+                    </div>
+                </motion.nav>
+
+                <main className="flex flex-col items-center justify-center py-8">
+                    <motion.div
+                        className="relative"
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.5 }}
+                    >
+                        <div
+                            id="game-container"
+                            className="rounded-xl overflow-hidden border border-white/10 shadow-2xl shadow-white/5"
+                        />
+
+                        {gameOver && (
+                            <motion.div
+                                className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center rounded-xl"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ duration: 0.3 }}
+                            >
+                                <motion.div
+                                    initial={{ scale: 0.8, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
+                                    className="text-center"
+                                >
+                                    <h2 className={`text-4xl font-bold mb-2 ${won ? 'text-emerald-400' : 'text-white'}`}>
+                                        {won ? 'You Win!' : 'Game Over'}
+                                    </h2>
+                                    <p className="text-white/60 text-lg mb-6">Food collected: {foodEaten}</p>
+                                    {foodEaten === highScore && foodEaten > 0 && (
+                                        <p className="text-emerald-400 text-sm mb-4">New High Score!</p>
+                                    )}
+                                    <button
+                                        onClick={handleRestart}
+                                        className="flex items-center gap-2 mx-auto px-6 py-3 bg-white text-black rounded-lg font-medium hover:bg-white/90 transition-colors"
+                                    >
+                                        <RotateCcw className="w-4 h-4" />
+                                        Play Again
+                                    </button>
+                                </motion.div>
+                            </motion.div>
+                        )}
+                    </motion.div>
+
+                    <motion.p
+                        className="mt-6 text-white/40 text-sm"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.5 }}
+                    >
+                        Use <kbd className="px-2 py-1 bg-white/10 rounded text-white/60">Arrow Keys</kbd> to navigate · Avoid mines using numbers
+                    </motion.p>
+                </main>
+            </div>
         </>
     );
 }

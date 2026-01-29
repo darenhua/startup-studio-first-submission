@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Gamepad2, Trophy, Play, ChevronRight, Sparkles, X } from "lucide-react";
+import { Gamepad2, Trophy, Play, Sparkles, X } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
 import {
     DndContext,
@@ -516,7 +516,6 @@ function DoodleGodPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                 <div className="p-4 border-b border-white/10 flex items-center justify-between">
                     <div>
                         <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                            <Sparkles className="w-5 h-5 text-yellow-400" />
                             Element Forge
                         </h2>
                         <p className="text-xs text-white/40">
@@ -537,7 +536,7 @@ function DoodleGodPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                 <div className="px-4 py-2">
                     <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
                         <motion.div
-                            className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500"
+                            className="h-full bg-white"
                             initial={{ width: 0 }}
                             animate={{ width: `${(discoveredElements.length / totalElements) * 100}%` }}
                             transition={{ duration: 0.5 }}
@@ -559,13 +558,12 @@ function DoodleGodPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -10 }}
                         >
-                            <div className={`text-center py-2 px-3 rounded-lg text-sm ${
-                                message.startsWith('✨')
-                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                    : message.startsWith('❌')
+                            <div className={`text-center py-2 px-3 rounded-lg text-sm ${message.startsWith('✨')
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                : message.startsWith('❌')
                                     ? 'bg-red-500/10 text-red-400/70 border border-red-500/20'
                                     : 'bg-white/5 text-white/70 border border-white/10'
-                            }`}>
+                                }`}>
                                 {message}
                             </div>
                         </motion.div>
@@ -582,7 +580,7 @@ function DoodleGodPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                     onDragCancel={handleDragCancel}
                 >
                     <div className="flex-1 overflow-y-auto p-4">
-                        <div className="grid grid-cols-4 gap-2">
+                        <div className="grid grid-cols-4 gap-2 gapy-4">
                             {discoveredElements.map(element => (
                                 <DraggableElement
                                     key={element.id}
@@ -716,20 +714,9 @@ export default function FinalDashboard() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.6 }}
                     >
-                        <div className="flex items-center gap-4 mb-4">
-                            <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
-                                Welcome back
-                            </h1>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setIsPanelOpen(!isPanelOpen)}
-                                className={`bg-transparent border-white/20 text-white/70 hover:bg-white/10 hover:text-white gap-2 ${isPanelOpen ? 'bg-white/10 text-white' : ''}`}
-                            >
-                                <Sparkles className="w-4 h-4 text-yellow-400" />
-                                Element Forge
-                            </Button>
-                        </div>
+                        <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
+                            Welcome back
+                        </h1>
                         <p className="text-lg text-white/50 max-w-2xl">
                             Your personal game arcade. Track your progress, compete on leaderboards,
                             and discover new games.
@@ -747,9 +734,13 @@ export default function FinalDashboard() {
                             <h2 className="text-2xl font-semibold tracking-tight mb-1">Games</h2>
                             <p className="text-white/40 text-sm">Classic games and creative hybrids</p>
                         </div>
-                        <Button variant="outline" size="sm" className="bg-transparent border-white/20 text-white/70 hover:bg-white/10 hover:text-white">
-                            View All
-                            <ChevronRight className="h-4 w-4" />
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsPanelOpen(!isPanelOpen)}
+                            className={`bg-transparent border-white/20 text-white/70 hover:bg-white/10 hover:text-white gap-2 ${isPanelOpen ? 'bg-white/10 text-white' : ''}`}
+                        >
+                            Element Forge
                         </Button>
                     </motion.div>
 
